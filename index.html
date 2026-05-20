@@ -585,7 +585,7 @@ function saveApiUrl() {
 async function pingApi() {
   const dot = document.getElementById("statusDot");
   try {
-    const r = await fetch(API_URL + "?action=ping");
+    const r = await fetch(API_URL + "?action=ping", { mode: "cors" });
     const d = await r.json();
     dot.className = d.success ? "status-dot ok" : "status-dot err";
   } catch {
@@ -744,11 +744,11 @@ async function submitEntry() {
   btn.innerHTML = '<span class="spin"></span> Saving…';
 
   try {
-    const res = await fetch(API_URL, {
-      method:"POST",
-      body: JSON.stringify({ barcode, unitPrice, qty, notes }),
-      headers:{ "Content-Type":"application/json" }
+    const params = new URLSearchParams({
+      action: "insert",
+      barcode, unitPrice, qty, notes
     });
+    const res = await fetch(API_URL + "?" + params.toString());
     const data = await res.json();
     if (data.success) {
       showToast(`✅ Saved to row ${data.row} — Total: ৳${data.total.toLocaleString()}`);
