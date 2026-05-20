@@ -749,9 +749,14 @@ async function submitEntry() {
       barcode, unitPrice, qty, notes
     });
     const res = await fetch(API_URL + "?" + params.toString());
-    const data = await res.json();
+    const text = await res.text();
+    console.log("API raw response:", text);
+    let data;
+    try { data = JSON.parse(text); }
+    catch(pe) { showToast("API returned invalid response. Check Apps Script deployment.", true); return; }
     if (data.success) {
-      showToast(`✅ Saved to row ${data.row} — Total: ৳${data.total.toLocaleString()}`);
+      const total = data.total ?? 0;
+      showToast(`✅ Saved to row ${data.row} — Total: ৳${Number(total).toLocaleString('en-BD',{minimumFractionDigits:2})}`);
       clearForm();
       loadHistory();
     } else {
