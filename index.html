@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Barcode Scanner</title>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#0a0c14"/>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+<!-- ZXing for barcode decoding -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js" crossorigin="anonymous"></script>
+
+<style>
+/* ═══════════════════════════════════════════════
+   DESIGN: Industrial utility — dark, dense, sharp
+   ═══════════════════════════════════════════════ */
+:root{
+  --bg:       #0a0c14;
+  --s1:       #111420;
+  --s2:       #181c2e;
+  --s3:       #1f2440;
+  --acc:      #00e5ff;
+  --acc2:     #ff4d6d;
+  --acc3:     #ffd60a;
+  --green:    #06d6a0;
+  --txt:      #dde1f0;
+  --muted:    #5a6080;
+  --border:   rgba(0,229,255,.12);
+  --r:        10px;
+  --mono:     'JetBrains Mono',monospace;
+  --sans:     'Outfit',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--txt);
+  font-family:var(--sans);
+  min-height:100vh;
+  padding:16px;
+  padding-bottom:40px;
+  background-image:
+    radial-gradient(ellipse 70% 40% at 100% 0%,rgba(0,229,255,.05) 0%,transparent 60%),
+    radial-gradient(ellipse 50% 50% at 0% 100%,rgba(6,214,160,.04) 0%,transparent 60%);
+}
+
+/* ── Setup banner ── */
+#setupBanner{
+  background:rgba(255,214,10,.07);
+  border:1px solid rgba(255,214,10,.3);
+  border-radius:var(--r);
+  padding:14px 16px;
+  margin-bottom:16px;
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+#setupBanner.hidden{display:none}
+.banner-icon{font-size:1.3rem;flex-shrink:0;margin-top:1px}
+.banner-body{flex:1}
+.banner-title{font-weight:700;font-size:.85rem;color:var(--acc3);margin-bottom:4px}
+.banner-text{font-size:.75rem;color:var(--muted);line-height:1.5}
+.banner-input{
+  width:100%;margin-top:8px;
+  background:rgba(255,214,10,.06);
+  border:1px solid rgba(255,214,10,.25);
+  border-radius:7px;
+  color:var(--txt);
+  font-family:var(--mono);
+  font-size:.75rem;
+  padding:8px 10px;
+  outline:none;
+}
+.banner-input:focus{border-color:var(--acc3)}
+.banner-save{
+  margin-top:8px;
+  background:var(--acc3);
+  color:#0a0c14;
+  border:none;
+  border-radius:7px;
+  font-family:var(--sans);
+  font-weight:700;
+  font-size:.78rem;
+  padding:8px 16px;
+  cursor:pointer;
+  transition:filter .2s;
+}
+.banner-save:hover{filter:brightness(1.1)}
+
+/* ── Header ── */
+header{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:18px;
+}
+.logo{
+  width:40px;height:40px;
+  background:var(--acc);
+  border-radius:9px;
+  display:grid;place-items:center;
+  flex-shrink:0;
+  box-shadow:0 0 20px rgba(0,229,255,.3);
+}
+.logo svg{width:22px;height:22px;color:#0a0c14}
+.hd h1{font-size:1.3rem;font-weight:800;letter-spacing:-.02em}
+.hd p{font-size:.72rem;color:var(--muted);margin-top:1px}
+.status-dot{
+  margin-left:auto;
+  width:9px;height:9px;
+  border-radius:50%;
+  background:var(--muted);
+  transition:background .3s;
+  box-shadow:none;
+}
+.status-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
+.status-dot.err{background:var(--acc2);box-shadow:0 0 8px var(--acc2)}
+
+/* ── Grid ── */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+
+/* ── Card ── */
+.card{
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  padding:18px;
+}
+.card-label{
+  font-size:.62rem;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--acc);
+  margin-bottom:14px;
+  display:flex;align-items:center;gap:7px;
+}
+.card-label::before{
+  content:'';width:3px;height:13px;
+  background:var(--acc);border-radius:2px;
+}
+
+/* ── Camera ── */
+.cam-wrap{
+  position:relative;
+  width:100%;
+  aspect-ratio:4/3;
+  background:#000;
+  border-radius:8px;
+  overflow:hidden;
+  margin-bottom:12px;
+}
+@media(max-width:480px){.cam-wrap{aspect-ratio:3/4}}
+#preview{width:100%;height:100%;object-fit:cover;display:block}
+
+/* Scan corners */
+.cam-wrap::before,.cam-wrap::after{
+  content:'';
+  position:absolute;
+  width:22px;height:22px;
+  border-color:var(--acc);
+  border-style:solid;
+  z-index:5;
+  opacity:0;
+  transition:opacity .3s;
+}
+.cam-wrap::before{top:10px;left:10px;border-width:2px 0 0 2px;border-radius:3px 0 0 0}
+.cam-wrap::after{bottom:10px;right:10px;border-width:0 2px 2px 0;border-radius:0 0 3px 0}
+.cam-wrap.scanning::before,.cam-wrap.scanning::after{opacity:1}
+
+.corner-tr,.corner-bl{
+  position:absolute;z-index:5;
+  width:22px;height:22px;
+  border-color:var(--acc);
+  border-style:solid;
+  opacity:0;
+  transition:opacity .3s;
+}
+.corner-tr{top:10px;right:10px;border-width:2px 2px 0 0;border-radius:0 3px 0 0}
+.corner-bl{bottom:10px;left:10px;border-width:0 0 2px 2px;border-radius:0 0 0 3px}
+.cam-wrap.scanning .corner-tr,.cam-wrap.scanning .corner-bl{opacity:1}
+
+/* Scan line */
+.scan-line{
+  position:absolute;left:8%;right:8%;
+  height:1.5px;
+  background:linear-gradient(90deg,transparent,var(--acc),transparent);
+  box-shadow:0 0 8px var(--acc);
+  top:50%;z-index:4;
+  opacity:0;
+  animation:scanY 2.2s ease-in-out infinite;
+  transition:opacity .3s;
+}
+.scan-line.on{opacity:1}
+@keyframes scanY{
+  0%  {transform:translateY(-80px)}
+  50% {transform:translateY(80px)}
+  100%{transform:translateY(-80px)}
+}
+
+/* Idle overlay */
+.cam-idle{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:9px;color:var(--muted);font-size:.8rem;
+  writing-mode:horizontal-tb;
+}
+.cam-idle svg{opacity:.25}
+
+/* Error overlay */
+.cam-err{
+  position:absolute;inset:0;
+  display:none;
+  flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:9px;
+  background:rgba(10,12,20,.93);
+  padding:20px;text-align:center;
+  writing-mode:horizontal-tb !important;
+  z-index:10;
+}
+.cam-err *{writing-mode:horizontal-tb !important;transform:none !important}
+.cam-err.on{display:flex}
+.err-ring{
+  width:50px;height:50px;
+  border-radius:50%;
+  background:rgba(255,77,109,.1);
+  border:1.5px solid rgba(255,77,109,.4);
+  display:grid;place-items:center;
+  animation:pulse-r 2s ease-in-out infinite;
+}
+@keyframes pulse-r{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,77,109,.2)}
+  50%    {box-shadow:0 0 0 8px rgba(255,77,109,0)}
+}
+.err-title{font-weight:700;font-size:.9rem;color:var(--acc2)}
+.err-msg{font-size:.74rem;color:var(--muted);line-height:1.5;max-width:240px}
+.err-hint{
+  font-size:.68rem;font-family:var(--mono);
+  background:rgba(255,77,109,.07);
+  border:1px solid rgba(255,77,109,.2);
+  border-radius:5px;padding:5px 10px;
+  color:var(--acc2);max-width:240px;
+}
+.err-retry{
+  margin-top:4px;
+  background:rgba(255,77,109,.14);
+  border:1px solid rgba(255,77,109,.3);
+  color:var(--acc2);border-radius:7px;
+  font-family:var(--sans);font-size:.76rem;font-weight:700;
+  padding:7px 16px;cursor:pointer;
+  transition:background .2s;
+}
+.err-retry:hover{background:rgba(255,77,109,.25)}
+
+/* ── Barcode result strip ── */
+.result-strip{
+  display:flex;align-items:center;gap:10px;
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px 13px;
+  font-family:var(--mono);
+  font-size:.88rem;
+  min-height:42px;
+  margin-bottom:12px;
+  transition:border-color .3s,background .3s;
+}
+.result-strip.hit{
+  border-color:rgba(6,214,160,.4);
+  background:rgba(6,214,160,.07);
+  animation:flashin .4s ease;
+}
+@keyframes flashin{0%{background:rgba(6,214,160,.25)}100%{background:rgba(6,214,160,.07)}}
+.rs-label{font-size:.62rem;color:var(--muted);margin-right:4px;text-transform:uppercase;letter-spacing:.07em}
+#barcodeDisplay{color:var(--acc);word-break:break-all}
+
+/* ── Buttons ── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  border:none;border-radius:8px;
+  font-family:var(--sans);font-size:.82rem;font-weight:700;
+  cursor:pointer;transition:all .18s;
+  padding:10px 16px;width:100%;
+}
+.btn-acc{background:var(--acc);color:#0a0c14}
+.btn-acc:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.btn-acc:active{transform:translateY(0)}
+.btn-red{background:rgba(255,77,109,.1);color:var(--acc2);border:1px solid rgba(255,77,109,.25)}
+.btn-red:hover{background:rgba(255,77,109,.2)}
+.btn-ghost{background:transparent;color:var(--txt);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--acc);color:var(--acc)}
+.btn-green{background:var(--green);color:#0a0c14}
+.btn-green:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn-row{display:flex;gap:9px;margin-top:10px}
+
+/* ── Fields ── */
+.field{margin-bottom:13px}
+label{display:block;font-size:.65rem;color:var(--muted);margin-bottom:5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+input[type=text],input[type=number],select{
+  width:100%;
+  background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:7px;
+  color:var(--txt);
+  font-family:var(--mono);font-size:.88rem;
+  padding:9px 12px;outline:none;
+  transition:border-color .2s,box-shadow .2s;
+  -webkit-appearance:none;
+}
+input:focus,select:focus{
+  border-color:var(--acc);
+  box-shadow:0 0 0 3px rgba(0,229,255,.08);
+}
+input[readonly]{opacity:.6;cursor:default}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+
+/* ── Total ── */
+.total-row{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:8px;padding:11px 14px;margin-bottom:14px;
+}
+.tl-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.tl-value{font-family:var(--mono);font-size:1.35rem;font-weight:700;color:var(--acc3)}
+
+/* ── Clock chips ── */
+.clock-row{display:flex;gap:10px;margin-bottom:14px}
+.chip{
+  flex:1;background:var(--s1);
+  border:1px solid var(--border);
+  border-radius:7px;padding:8px 11px;
+  font-family:var(--mono);font-size:.8rem;text-align:center;
+}
+.chip span{display:block;font-size:.58rem;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.08em}
+
+/* ── History ── */
+.history-card{margin-top:14px}
+.history-wrap{overflow-x:auto;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:.75rem}
+th{
+  background:var(--s1);color:var(--muted);
+  font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  font-size:.6rem;padding:8px 10px;text-align:left;
+  border-bottom:1px solid var(--border);white-space:nowrap;
+}
+td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.03);font-family:var(--mono);white-space:nowrap}
+tr:hover td{background:rgba(0,229,255,.025)}
+.empty{text-align:center;padding:28px;color:var(--muted);font-size:.8rem}
+
+/* ── Toast ── */
+#toast{
+  position:fixed;bottom:24px;left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background:var(--s3);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:12px 20px;
+  display:flex;align-items:center;gap:10px;
+  font-size:.82rem;white-space:nowrap;
+  opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);
+  z-index:999;pointer-events:none;
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.ok{border-color:rgba(6,214,160,.4)}
+#toast.err{border-color:rgba(255,77,109,.4)}
+
+/* ── Spinner ── */
+.spin{
+  width:15px;height:15px;
+  border:2px solid rgba(10,12,20,.3);
+  border-top-color:#0a0c14;
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+  display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Manual input row ── */
+.manual-row{display:flex;gap:8px;margin-top:2px}
+.manual-row input{flex:1}
+.manual-row .btn{width:auto;padding:9px 13px}
+</style>
+</head>
+<body>
+
+<!-- ── Setup Banner (shown until API URL is saved) ── -->
+<div id="setupBanner">
+  <div class="banner-icon">⚙️</div>
+  <div class="banner-body">
+    <div class="banner-title">Paste your Google Apps Script URL</div>
+    <div class="banner-text">Deploy your <code>Code.gs</code> as a Web App, copy the URL, paste it below, then tap Save.</div>
+    <input class="banner-input" id="apiUrlInput" type="text" placeholder="https://script.google.com/macros/s/AKfy.../exec"/>
+    <br/><button class="banner-save" onclick="saveApiUrl()">Save & Connect</button>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="7" height="7" rx="1"/><rect x="15" y="2" width="7" height="7" rx="1"/>
+        <rect x="2" y="15" width="7" height="7" rx="1"/>
+        <path d="M15 15h2v2M19 15h2M15 19h2M19 19h2"/>
+      </svg>
+    </div>
+    <div class="hd">
+      <h1>ScanSheet</h1>
+      <p>Barcode → Google Sheets</p>
+    </div>
+    <div class="status-dot" id="statusDot" title="API connection status"></div>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: Camera -->
+    <div class="card">
+      <div class="card-label">Camera Scanner</div>
+
+      <div class="cam-wrap" id="camWrap">
+        <video id="preview" autoplay muted playsinline></video>
+        <div class="scan-line" id="scanLine"></div>
+        <div class="corner-tr"></div>
+        <div class="corner-bl"></div>
+
+        <!-- Error overlay -->
+        <div class="cam-err" id="camErr">
+          <div class="err-ring">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2.2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r=".6" fill="#ff4d6d"/>
+            </svg>
+          </div>
+          <div class="err-title" id="errTitle">Camera Error</div>
+          <div class="err-msg"   id="errMsg">Unable to access camera.</div>
+          <div class="err-hint"  id="errHint"></div>
+          <button class="err-retry" onclick="startCamera()">↺ Retry</button>
+        </div>
+
+        <!-- Idle overlay -->
+        <div class="cam-idle" id="camIdle">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M23 7l-7-4-7 4v9l7 4 7-4V7z"/><path d="M16 3.13v17.74M9 7l7 4 7-4"/>
+          </svg>
+          <span>Tap Start Camera</span>
+        </div>
+      </div>
+
+      <!-- Scanned result -->
+      <div class="result-strip" id="resultStrip">
+        <span class="rs-label">Code:</span>
+        <span id="barcodeDisplay">—</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-acc" id="startBtn" onclick="startCamera()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M2 12h2M20 12h2M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          Start Camera
+        </button>
+        <button class="btn btn-red" id="stopBtn" style="display:none" onclick="stopCamera()">Stop</button>
+      </div>
+
+      <!-- Manual barcode -->
+      <div class="field" style="margin-top:14px">
+        <label>Or Enter Barcode Manually</label>
+        <div class="manual-row">
+          <input type="text" id="manualInput" placeholder="Type or paste barcode…" onkeydown="if(event.key==='Enter')acceptManual()"/>
+          <button class="btn btn-ghost" onclick="acceptManual()">Set</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Entry Form -->
+    <div class="card">
+      <div class="card-label">Entry Details</div>
+
+      <!-- Live clock -->
+      <div class="clock-row">
+        <div class="chip"><span>Date</span><span id="liveDate">—</span></div>
+        <div class="chip"><span>Time</span><span id="liveTime">—</span></div>
+      </div>
+
+      <div class="field">
+        <label>Barcode</label>
+        <input type="text" id="barcodeField" readonly placeholder="Scan or enter barcode…"/>
+      </div>
+
+      <div class="two-col">
+        <div class="field">
+          <label>Unit Price (৳)</label>
+          <input type="number" id="unitPrice" min="0" step="0.01" placeholder="0.00" oninput="calcTotal()"/>
+        </div>
+        <div class="field">
+          <label>Qty</label>
+          <input type="number" id="qty" min="1" step="1" value="1" oninput="calcTotal()"/>
+        </div>
+      </div>
+
+      <div class="total-row">
+        <div class="tl-label">Total</div>
+        <div class="tl-value" id="totalDisplay">৳ 0.00</div>
+      </div>
+
+      <div class="field">
+        <label>Notes (optional)</label>
+        <input type="text" id="notes" placeholder="Product name, remark…"/>
+      </div>
+
+      <button class="btn btn-green" id="saveBtn" onclick="submitEntry()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save to Google Sheets
+      </button>
+      <button class="btn btn-ghost" style="margin-top:9px" onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="card history-card">
+    <div class="card-label" style="justify-content:space-between;display:flex">
+      <span style="display:flex;align-items:center;gap:7px">
+        <span style="width:3px;height:13px;background:var(--acc);border-radius:2px;display:inline-block"></span>
+        Recent Entries
+      </span>
+      <button class="btn btn-ghost" style="width:auto;padding:5px 13px;font-size:.72rem" onclick="loadHistory()">Refresh</button>
+    </div>
+    <div class="history-wrap">
+      <table>
+        <thead>
+          <tr><th>Barcode</th><th>Date</th><th>Time</th><th>Unit Price</th><th>Qty</th><th>Total</th><th>Notes</th></tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr><td colspan="7" class="empty">Connect API to see entries</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- end .app -->
+
+<div id="toast"><span id="toastIcon">✅</span><span id="toastMsg"></span></div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════
+const STORAGE_KEY = "scansheet_api_url";
+let API_URL = localStorage.getItem(STORAGE_KEY) || "";
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+window.addEventListener("load", () => {
+  if (API_URL) {
+    document.getElementById("setupBanner").classList.add("hidden");
+    document.getElementById("apiUrlInput").value = API_URL;
+    pingApi();
+    loadHistory();
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+});
+
+// ═══════════════════════════════════════════════
+//  API URL SETUP
+// ═══════════════════════════════════════════════
+function saveApiUrl() {
+  const val = document.getElementById("apiUrlInput").value.trim();
+  if (!val.startsWith("https://script.google.com")) {
+    showToast("Please paste a valid Apps Script URL", true); return;
+  }
+  API_URL = val;
+  localStorage.setItem(STORAGE_KEY, API_URL);
+  document.getElementById("setupBanner").classList.add("hidden");
+  showToast("API URL saved! Connecting…");
+  pingApi();
+  loadHistory();
+}
+
+async function pingApi() {
+  const dot = document.getElementById("statusDot");
+  try {
+    const r = await fetch(API_URL + "?action=ping");
+    const d = await r.json();
+    dot.className = d.success ? "status-dot ok" : "status-dot err";
+  } catch {
+    dot.className = "status-dot err";
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CLOCK
+// ═══════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  const p   = n => String(n).padStart(2,"0");
+  document.getElementById("liveDate").textContent = `${p(now.getDate())}-${p(now.getMonth()+1)}-${now.getFullYear()}`;
+  document.getElementById("liveTime").textContent = `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+}
+
+// ═══════════════════════════════════════════════
+//  CAMERA
+// ═══════════════════════════════════════════════
+let codeReader = null;
+let streamRef  = null;
+let lastCode   = "";
+
+const ERR_MAP = {
+  NotAllowedError     : { t:"Permission Denied",     m:"Tap the camera icon in your browser address bar and select Allow.",           h:"Then tap Retry" },
+  NotFoundError       : { t:"No Camera Found",        m:"No camera detected. Use manual entry below.",                                h:"Plug in a camera or use manual input" },
+  NotReadableError    : { t:"Camera In Use",          m:"Another app is using the camera. Close it and retry.",                       h:"Check other open apps or tabs" },
+  OverconstrainedError: { t:"Camera Incompatible",    m:"The camera mode isn't supported on this device.",                            h:"Try a different browser" },
+  NotSupportedError   : { t:"HTTPS Required",         m:"Camera access requires HTTPS. This site is already on HTTPS — try Chrome.",  h:"Use Chrome or Firefox" },
+  SecurityError       : { t:"Security Error",         m:"Camera blocked. Make sure you opened this page via HTTPS.",                  h:"Check your browser URL starts with https://" },
+  AbortError          : { t:"Camera Aborted",         m:"The camera was interrupted. Please retry.",                                  h:"Tap Retry below" },
+};
+
+async function startCamera() {
+  hideCamErr();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showCamErr({ name:"NotSupportedError" }); return;
+  }
+  try {
+    if (window.ZXing) {
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      const devices = await codeReader.listVideoInputDevices();
+      if (!devices?.length) { showCamErr({ name:"NotFoundError" }); return; }
+      const id = devices.length > 1 ? devices[devices.length-1].deviceId : devices[0].deviceId;
+      setCamActive(true);
+      await codeReader.decodeFromVideoDevice(id, "preview", (res) => {
+        if (res) onCode(res.getText());
+      });
+    } else {
+      await startFallback();
+    }
+  } catch(e) { showCamErr(e); }
+}
+
+async function startFallback() {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } });
+  } catch(e) { showCamErr(e); return; }
+  streamRef = stream;
+  const vid = document.getElementById("preview");
+  vid.srcObject = stream; vid.play();
+  setCamActive(true);
+  if ("BarcodeDetector" in window) {
+    const bd = new BarcodeDetector({ formats:["qr_code","ean_13","ean_8","code_128","code_39","upc_a","upc_e","itf","aztec","data_matrix","pdf417"] });
+    const loop = async () => {
+      if (!streamRef) return;
+      try { const c = await bd.detect(vid); if (c.length) { onCode(c[0].rawValue); return; } } catch{}
+      requestAnimationFrame(loop);
+    };
+    vid.onloadedmetadata = loop;
+  } else {
+    showCamErr({ name:"NotSupportedError", message:"BarcodeDetector not supported. Use manual entry." });
+  }
+}
+
+function stopCamera() {
+  if (codeReader) { codeReader.reset(); codeReader = null; }
+  if (streamRef)  { streamRef.getTracks().forEach(t=>t.stop()); streamRef = null; }
+  document.getElementById("preview").srcObject = null;
+  setCamActive(false);
+}
+
+function setCamActive(on) {
+  document.getElementById("camIdle").style.display   = on ? "none" : "";
+  document.getElementById("scanLine").className      = on ? "scan-line on" : "scan-line";
+  document.getElementById("camWrap").className       = on ? "cam-wrap scanning" : "cam-wrap";
+  document.getElementById("startBtn").style.display  = on ? "none" : "";
+  document.getElementById("stopBtn").style.display   = on ? "" : "none";
+}
+
+function showCamErr(e) {
+  setCamActive(false);
+  const info = ERR_MAP[e?.name] || { t:"Camera Error", m: e?.message || "Unexpected error.", h:"Error: "+(e?.name||"Unknown") };
+  document.getElementById("errTitle").textContent = info.t;
+  document.getElementById("errMsg").textContent   = info.m;
+  document.getElementById("errHint").textContent  = info.h;
+  document.getElementById("camErr").className     = "cam-err on";
+}
+function hideCamErr() {
+  document.getElementById("camErr").className = "cam-err";
+}
+
+function onCode(code) {
+  if (code === lastCode) return;
+  lastCode = code;
+  document.getElementById("barcodeDisplay").textContent = code;
+  document.getElementById("barcodeField").value = code;
+  document.getElementById("resultStrip").classList.add("hit");
+  setTimeout(() => document.getElementById("resultStrip").classList.remove("hit"), 1500);
+  beep();
+  document.getElementById("unitPrice").focus();
+}
+
+function acceptManual() {
+  const v = document.getElementById("manualInput").value.trim();
+  if (!v) return;
+  onCode(v);
+  document.getElementById("manualInput").value = "";
+}
+
+function beep() {
+  try {
+    const ctx = new AudioContext();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 1046;
+    g.gain.setValueAtTime(0.25, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.12);
+    o.start(); o.stop(ctx.currentTime+0.12);
+  } catch{}
+}
+
+// ═══════════════════════════════════════════════
+//  FORM
+// ═══════════════════════════════════════════════
+function calcTotal() {
+  const p = parseFloat(document.getElementById("unitPrice").value) || 0;
+  const q = parseInt(document.getElementById("qty").value,10)      || 0;
+  document.getElementById("totalDisplay").textContent = "৳ " + (p*q).toLocaleString("en-BD",{minimumFractionDigits:2});
+}
+
+async function submitEntry() {
+  if (!API_URL) { showToast("Paste your Apps Script URL in the setup box above first.", true); return; }
+  const barcode   = document.getElementById("barcodeField").value.trim();
+  const unitPrice = document.getElementById("unitPrice").value.trim();
+  const qty       = document.getElementById("qty").value.trim();
+  const notes     = document.getElementById("notes").value.trim();
+  if (!barcode)   { showToast("Scan or enter a barcode first.", true); return; }
+  if (!unitPrice) { showToast("Enter a unit price.", true); return; }
+  if (!qty)       { showToast("Enter a quantity.", true); return; }
+
+  const btn = document.getElementById("saveBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Saving…';
+
+  try {
+    const res = await fetch(API_URL, {
+      method:"POST",
+      body: JSON.stringify({ barcode, unitPrice, qty, notes }),
+      headers:{ "Content-Type":"application/json" }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✅ Saved to row ${data.row} — Total: ৳${data.total.toLocaleString()}`);
+      clearForm();
+      loadHistory();
+    } else {
+      showToast("Error: " + data.error, true);
+    }
+  } catch(e) {
+    showToast("Network error: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save to Google Sheets';
+  }
+}
+
+function clearForm() {
+  lastCode = "";
+  ["barcodeField","unitPrice","notes"].forEach(id => document.getElementById(id).value="");
+  document.getElementById("qty").value = "1";
+  document.getElementById("barcodeDisplay").textContent = "—";
+  document.getElementById("totalDisplay").textContent = "৳ 0.00";
+}
+
+// ═══════════════════════════════════════════════
+//  HISTORY
+// ═══════════════════════════════════════════════
+async function loadHistory() {
+  if (!API_URL) return;
+  const tbody = document.getElementById("historyBody");
+  tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  try {
+    const r = await fetch(API_URL + "?action=recent&n=15");
+    const d = await r.json();
+    if (!d.success || !d.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No entries yet</td></tr>'; return;
+    }
+    tbody.innerHTML = d.rows.map(r => `
+      <tr>
+        <td style="color:var(--acc)">${esc(r[0])}</td>
+        <td>${esc(r[1])}</td>
+        <td style="color:var(--muted)">${esc(r[2])}</td>
+        <td>৳${Number(r[3]).toLocaleString("en-BD",{minimumFractionDigits:2})}</td>
+        <td>${esc(r[4])}</td>
+        <td style="color:var(--acc3);font-weight:700">৳${Number(r[5]).toLocaleString("en-BD",{minimumFractionDigits:2})}</td>
+        <td style="color:var(--muted)">${esc(r[6])}</td>
+      </tr>`).join("");
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Could not load history</td></tr>';
+  }
+}
+
+function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") }
+
+// ═══════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════
+let toastT;
+function showToast(msg, isErr) {
+  clearTimeout(toastT);
+  const t = document.getElementById("toast");
+  t.className = isErr ? "show err" : "show ok";
+  document.getElementById("toastIcon").textContent = isErr ? "❌" : "✅";
+  document.getElementById("toastMsg").textContent  = msg;
+  toastT = setTimeout(()=>{ t.className="" }, 4000);
+}
+</script>
+</body>
+</html>
